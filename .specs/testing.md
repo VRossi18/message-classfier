@@ -1,0 +1,2 @@
+# Description 
+Testar toda a aplicação, precisamos de testes unitarios e testes de integração, vamos usar dois agentes em paralelo para desenvolver esses dois passos, terceiro passo é um agente especializado em qa para testar toda a aplicação também em paralelo

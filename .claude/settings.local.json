@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(grep -v '^$')",
+      "Bash(podman ps *)",
+      "Bash(curl -s localhost:3000/health)",
+      "Bash(curl -s localhost:3000/api/metrics)",
+      "Bash(curl -s localhost:3000/api/messages)"
+    ]
+  }
+}
