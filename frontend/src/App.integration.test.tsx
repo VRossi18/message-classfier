@@ -106,10 +106,41 @@ describe('App (UI + MSW + simulador em memória)', () => {
     await waitFor(() => expect(screen.getByText('Precisão da IA').nextElementSibling).toHaveTextContent('67%'), SLOW)
   })
 
-  it('fechar o detalhe com Escape devolve o foco ao card de origem', async () => {
+  it('resolver pelo detalhe move o card para Resolvidas e sobe o contador; reabrir devolve ao setor', async () => {
     renderApp()
     const financeiro = await screen.findByRole('region', { name: 'Financeiro' })
     fireEvent.click(await within(financeiro).findByText('Gui Alves'))
+    const dialog = await screen.findByRole('dialog')
+    fireEvent.click(within(dialog).getByRole('button', { name: /Marcar como resolvida/ }))
+
+    await waitFor(() => expect(within(column('Resolvidas')).getByText('Gui Alves')).toBeInTheDocument(), SLOW)
+    await waitFor(() => expect(within(column('Financeiro')).queryByText('Gui Alves')).not.toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText('Resolvidas', { selector: 'p' }).nextElementSibling).toHaveTextContent('1'), SLOW)
+    expect(await within(dialog).findByRole('button', { name: /Reabrir/ })).toBeInTheDocument()
+    // a precisão da IA não muda com a resolução (continua 67%)
+    expect(screen.getByText('Precisão da IA').nextElementSibling).toHaveTextContent('67%')
+
+    fireEvent.click(within(dialog).getByRole('button', { name: /Reabrir/ }))
+    await waitFor(() => expect(within(column('Financeiro')).getByText('Gui Alves')).toBeInTheDocument(), SLOW)
+    await waitFor(() => expect(within(column('Resolvidas')).queryByText('Gui Alves')).not.toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText('Resolvidas', { selector: 'p' }).nextElementSibling).toHaveTextContent('0'), SLOW)
+  })
+
+  it('o atalho do card resolve sem abrir o detalhe', async () => {
+    renderApp()
+    const financeiro = await screen.findByRole('region', { name: 'Financeiro' })
+    await within(financeiro).findByText('Gui Alves')
+    fireEvent.click(screen.getByRole('button', { name: 'Marcar como resolvida: Gui Alves' }))
+    await waitFor(() => expect(within(column('Resolvidas')).getByText('Gui Alves')).toBeInTheDocument(), SLOW)
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    // o Toaster é global e guarda o toast do teste anterior: basta existir ao menos um
+    expect((await screen.findAllByText('Mensagem marcada como resolvida')).length).toBeGreaterThan(0)
+  })
+
+  it('fechar o detalhe com Escape devolve o foco ao card de origem', async () => {
+    renderApp()
+    // o card pode estar em qualquer coluna (testes anteriores o moveram): procura pelo nome
+    fireEvent.click(await screen.findByText('Gui Alves'))
     const dialog = await screen.findByRole('dialog')
     fireEvent.keyDown(dialog, { key: 'Escape' })
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())

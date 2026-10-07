@@ -13,7 +13,9 @@ const BASE = import.meta.env.VITE_API_URL ?? ''
 async function request<T>(path: string, schema: z.ZodType<T>, init?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
     ...init,
-    headers: { 'Content-Type': 'application/json', ...init?.headers },
+    // Só declara JSON quando há corpo: o Fastify responde 400 a um POST sem corpo com
+    // Content-Type: application/json (caso de resolver/reabrir, que não enviam nada).
+    headers: { ...(init?.body ? { 'Content-Type': 'application/json' } : {}), ...init?.headers },
   })
   if (!res.ok) throw new Error(`Falha na requisição (${res.status})`)
   return schema.parse(await res.json())
@@ -28,6 +30,8 @@ export const api = {
       method: 'PATCH',
       body: JSON.stringify({ correctedSector }),
     }),
+  resolveMessage: (id: string): Promise<Message> => request(`/api/messages/${id}/resolve`, MessageSchema, { method: 'POST' }),
+  reopenMessage: (id: string): Promise<Message> => request(`/api/messages/${id}/reopen`, MessageSchema, { method: 'POST' }),
   getMetrics: (): Promise<Metrics> => request('/api/metrics', MetricsSchema),
   eventsUrl: () => `${BASE}/api/events`,
 }

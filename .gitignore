@@ -1,0 +1,6 @@
+# Segredos: a chave da API só existe aqui, nunca em arquivo versionado
+.env
+.env.*
+!.env.example
+node_modules
+dist

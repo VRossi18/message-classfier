@@ -1,3 +1,4 @@
+import { UnrecoverableError } from 'bullmq'
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { FakeClassifier } from '../../src/llm/fake.js'
 import type { LlmClassifier } from '../../src/llm/types.js'
@@ -11,7 +12,7 @@ const up = await servicesUp()
 
 const fake = new FakeClassifier()
 let behavior: (text: string) => Promise<ClassificationResult> = (t) => fake.classify(t)
-const classifier: LlmClassifier = { classify: (t) => behavior(t) }
+const classifier: LlmClassifier = { name: 'test:programavel', classify: (t) => behavior(t) }
 
 describe.skipIf(!up)('API + fila + worker (Postgres e Redis reais)', () => {
   let h: Harness
@@ -49,8 +50,10 @@ describe.skipIf(!up)('API + fila + worker (Postgres e Redis reais)', () => {
     const done = await waitStatus(msg.id, 'COMPLETED')
     expect(done.assignedSector).toBe('FINANCIAL')
     expect(typeof done.urgencyScore).toBe('number')
+    expect(done.model).toBe('test:programavel') // quem classificou é gravado e exposto
 
     await poll(async () => sse.events.some((e) => e.message.id === msg.id && e.message.status === 'COMPLETED'))
+    expect(sse.events.find((e) => e.message.id === msg.id && e.message.status === 'COMPLETED')?.message.model).toBe('test:programavel')
     const mine = sse.events.filter((e) => e.message.id === msg.id).map((e) => `${e.type}:${e.message.status}`)
     expect(mine).toEqual(['message.created:PENDING', 'message.updated:PROCESSING', 'message.updated:COMPLETED'])
     sse.abort()
@@ -102,6 +105,20 @@ describe.skipIf(!up)('API + fila + worker (Postgres e Redis reais)', () => {
     sse.abort()
   })
 
+  it('erro irrecuperável (ex.: chave inválida): FAILED já na 1ª tentativa, sem retentativas', async () => {
+    let calls = 0
+    behavior = async () => {
+      calls++
+      throw new UnrecoverableError('chave inválida')
+    }
+    const msg = await create('Jade', 'qualquer texto')
+    await waitStatus(msg.id, 'FAILED')
+    await new Promise((r) => setTimeout(r, 1500)) // o backoff do harness é 100 ms: daria tempo de sobra para repetir
+    expect(calls).toBe(1)
+    expect(h.failedJobs).toContain(msg.id)
+    expect((await list(h.base)).find((m) => m.id === msg.id)?.model).toBeNull()
+  })
+
   it('vários clientes SSE recebem o mesmo evento e o fechamento libera os ouvintes', async () => {
     // Os SSE abertos por testes anteriores já foram abortados: nenhum ouvinte pode sobrar.
     await poll(async () => h.activeListeners() === 0)
@@ -148,6 +165,52 @@ describe.skipIf(!up)('API + fila + worker (Postgres e Redis reais)', () => {
     expect(((await same.json()) as MessageDto).correctedSector).toBe('SALES')
     const m2 = (await (await fetch(`${h.base}/api/metrics`)).json()) as { corrected: number }
     expect(m2.corrected).toBe(metricsBefore.corrected)
+  })
+
+  it('resolver e reabrir: persiste, conta nas métricas, publica SSE e respeita o estado da mensagem', async () => {
+    const act = (id: string, action: 'resolve' | 'reopen') => fetch(`${h.base}/api/messages/${id}/${action}`, { method: 'POST' })
+    const metrics = async () =>
+      (await (await fetch(`${h.base}/api/metrics`)).json()) as { resolved: number; accuracy: number | null; total: number }
+
+    const msg = await create('Hana', 'dúvida sobre estoque disponível')
+    await waitStatus(msg.id, 'COMPLETED')
+    const before = await metrics()
+    const sse = await openSse(h.base)
+
+    const resolved = (await (await act(msg.id, 'resolve')).json()) as MessageDto
+    expect(resolved.resolvedAt).toEqual(expect.any(String))
+    expect((await metrics()).resolved).toBe(before.resolved + 1)
+    expect((await metrics()).accuracy).toBe(before.accuracy) // resolver não mexe na precisão da IA
+    await poll(async () => sse.events.some((e) => e.message.id === msg.id && e.message.resolvedAt !== null))
+
+    // idempotente: mantém a data original e não publica de novo
+    const eventsBefore = sse.events.length
+    const again = (await (await act(msg.id, 'resolve')).json()) as MessageDto
+    expect(again.resolvedAt).toBe(resolved.resolvedAt)
+    await new Promise((r) => setTimeout(r, 300))
+    expect(sse.events.length).toBe(eventsBefore)
+
+    // persiste após reiniciar a API (o app.close() espera as conexões SSE abertas, então fecha antes)
+    sse.abort()
+    await sse.closed
+    await h.restartApi()
+    expect((await list(h.base)).find((m) => m.id === msg.id)?.resolvedAt).toBe(resolved.resolvedAt)
+
+    const reopened = (await (await act(msg.id, 'reopen')).json()) as MessageDto
+    expect(reopened.resolvedAt).toBeNull()
+    expect((await metrics()).resolved).toBe(before.resolved)
+  })
+
+  it('não resolve mensagem FAILED nem inexistente', async () => {
+    behavior = async () => {
+      throw new Error('LLM fora do ar')
+    }
+    const msg = await create('Ivo', 'sempre falha')
+    await waitStatus(msg.id, 'FAILED')
+    const res = await fetch(`${h.base}/api/messages/${msg.id}/resolve`, { method: 'POST' })
+    expect(res.status).toBe(409)
+    const missing = await fetch(`${h.base}/api/messages/00000000-0000-4000-8000-000000000000/resolve`, { method: 'POST' })
+    expect(missing.status).toBe(404)
   })
 
   it('CORS: libera a origem do frontend em /api/messages e em /api/events', async () => {

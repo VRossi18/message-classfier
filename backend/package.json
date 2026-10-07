@@ -8,13 +8,15 @@
   },
   "scripts": {
     "test": "vitest run",
-    "dev": "tsx watch src/entrypoints/api.ts",
-    "dev:worker": "tsx watch src/entrypoints/worker.ts",
+    "dev": "tsx watch --env-file-if-exists=.env src/entrypoints/api.ts",
+    "dev:worker": "tsx watch --env-file-if-exists=.env src/entrypoints/worker.ts",
     "build": "tsc -p tsconfig.build.json",
     "start": "node dist/entrypoints/api.js",
     "start:worker": "node dist/entrypoints/worker.js",
     "typecheck": "tsc --noEmit",
-    "db:generate": "drizzle-kit generate"
+    "db:generate": "drizzle-kit generate",
+    "eval": "tsx --env-file-if-exists=.env eval/run.ts",
+    "llm:check": "tsx --env-file-if-exists=.env eval/check.ts"
   },
   "keywords": [],
   "author": "",

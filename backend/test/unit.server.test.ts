@@ -21,6 +21,8 @@ function makeRow(input: { customerName: string; rawContent: string }): MessageRo
     status: 'PENDING',
     createdAt: new Date('2026-01-01T10:00:00Z'),
     processedAt: null,
+    resolvedAt: null,
+    classifier: null,
   }
 }
 
@@ -43,6 +45,18 @@ function makeDeps() {
       return r
     }),
     applyClassification: vi.fn(),
+    resolve: vi.fn(async (id: string) => {
+      const r = rows.get(id)
+      if (!r) return undefined
+      r.resolvedAt ??= new Date('2026-01-02T09:00:00Z')
+      return r
+    }),
+    reopen: vi.fn(async (id: string) => {
+      const r = rows.get(id)
+      if (!r) return undefined
+      r.resolvedAt = null
+      return r
+    }),
     correctSector: vi.fn(async (id: string, sector: MessageRow['correctedSector']) => {
       const r = rows.get(id)
       if (!r) return undefined
@@ -241,6 +255,67 @@ describe('PATCH /api/messages/:id/correction', () => {
     })
     expect(res.statusCode).toBe(200)
     await app.close()
+  })
+})
+
+describe('POST /api/messages/:id/resolve e /reopen', () => {
+  const seed = (status: MessageRow['status'], resolvedAt: Date | null = null) => {
+    const row = { ...makeRow({ customerName: 'A', rawContent: 'x' }), status, resolvedAt }
+    d.rows.set(row.id, row)
+    return row
+  }
+  const call = async (action: 'resolve' | 'reopen', id: string) => {
+    const app = await build()
+    const res = await app.inject({ method: 'POST', url: `/api/messages/${id}/${action}` })
+    await app.close()
+    return res
+  }
+
+  it('resolve uma mensagem COMPLETED, devolve resolvedAt e publica message.updated', async () => {
+    const row = seed('COMPLETED')
+    const res = await call('resolve', row.id)
+    expect(res.statusCode).toBe(200)
+    expect(res.json()).toMatchObject({ id: row.id, resolvedAt: '2026-01-02T09:00:00.000Z' })
+    expect(d.events).toHaveLength(1)
+    expect(d.events[0]).toMatchObject({ type: 'message.updated', message: { id: row.id, resolvedAt: '2026-01-02T09:00:00.000Z' } })
+  })
+
+  it.each(['PENDING', 'PROCESSING', 'FAILED'] as const)('409 ao resolver mensagem %s, sem alterar nada', async (status) => {
+    const row = seed(status)
+    const res = await call('resolve', row.id)
+    expect(res.statusCode).toBe(409)
+    expect(d.repo.resolve).not.toHaveBeenCalled()
+    expect(d.events).toHaveLength(0)
+  })
+
+  it('resolver duas vezes é idempotente: mantém a data e não publica de novo', async () => {
+    const row = seed('COMPLETED', new Date('2026-01-01T12:00:00Z'))
+    const res = await call('resolve', row.id)
+    expect(res.statusCode).toBe(200)
+    expect(res.json().resolvedAt).toBe('2026-01-01T12:00:00.000Z')
+    expect(d.repo.resolve).not.toHaveBeenCalled()
+    expect(d.events).toHaveLength(0)
+  })
+
+  it('reabre uma resolvida, zera resolvedAt e publica message.updated', async () => {
+    const row = seed('COMPLETED', new Date('2026-01-01T12:00:00Z'))
+    const res = await call('reopen', row.id)
+    expect(res.statusCode).toBe(200)
+    expect(res.json().resolvedAt).toBeNull()
+    expect(d.events[0]).toMatchObject({ type: 'message.updated', message: { id: row.id, resolvedAt: null } })
+  })
+
+  it('reabrir uma mensagem já aberta é idempotente', async () => {
+    const row = seed('COMPLETED')
+    const res = await call('reopen', row.id)
+    expect(res.statusCode).toBe(200)
+    expect(d.repo.reopen).not.toHaveBeenCalled()
+    expect(d.events).toHaveLength(0)
+  })
+
+  it.each(['resolve', 'reopen'] as const)('404 em %s para id inexistente e 400 para id não-UUID', async (action) => {
+    expect((await call(action, '00000000-0000-4000-8000-000000000000')).statusCode).toBe(404)
+    expect((await call(action, 'abc')).statusCode).toBe(400)
   })
 })
 

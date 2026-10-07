@@ -1,6 +1,6 @@
 import type { Message, Sector, Sentiment } from './schemas'
 
-export type ColumnId = 'FINANCIAL' | 'STOCK' | 'SUPPORT' | 'SALES' | 'URGENT'
+export type ColumnId = 'FINANCIAL' | 'STOCK' | 'SUPPORT' | 'SALES' | 'URGENT' | 'RESOLVED'
 
 export const COLUMNS: { id: ColumnId; label: string; accent: string }[] = [
   { id: 'FINANCIAL', label: 'Financeiro', accent: 'bg-emerald-500' },
@@ -8,6 +8,7 @@ export const COLUMNS: { id: ColumnId; label: string; accent: string }[] = [
   { id: 'SUPPORT', label: 'Suporte', accent: 'bg-sky-500' },
   { id: 'SALES', label: 'Vendas', accent: 'bg-violet-500' },
   { id: 'URGENT', label: 'Urgente', accent: 'bg-rose-500' },
+  { id: 'RESOLVED', label: 'Resolvidas', accent: 'bg-teal-500' },
 ]
 
 export const SECTOR_LABEL: Record<Sector, string> = {
@@ -51,9 +52,26 @@ export function effectiveSector(m: Message): Sector | null {
  * como "em triagem" na fila de entrada.
  */
 export function columnFor(m: Message): ColumnId | null {
+  if (m.resolvedAt) return 'RESOLVED'
   const sector = effectiveSector(m)
   if (m.sentiment === 'CRITICAL' || sector === 'HUMAN_REVIEW') return 'URGENT'
   return sector
+}
+
+/** "anthropic:claude-haiku-4-5-20251001" → "Claude · claude-haiku-4-5-20251001". */
+const PROVIDER_LABEL: Record<string, string> = {
+  anthropic: 'Claude',
+  ollama: 'Ollama',
+  fake: 'Simulado',
+  mock: 'Simulado (mock)',
+}
+
+export function modelLabel(model: string | null | undefined): string {
+  if (!model) return '—'
+  const [provider = '', ...rest] = model.split(':')
+  const label = PROVIDER_LABEL[provider] ?? provider
+  const name = rest.join(':')
+  return name ? `${label} · ${name}` : label
 }
 
 /** Baixa urgência não deve parecer alarme: verde → âmbar → vermelho. */

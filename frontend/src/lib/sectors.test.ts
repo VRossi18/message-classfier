@@ -1,12 +1,27 @@
 import { describe, expect, it } from 'vitest'
 import type { Message } from './schemas'
-import { COLUMNS, DEFAULT_ACTION, SECTOR_LABEL, SENTIMENT_LABEL, SENTIMENT_STYLE, columnFor, effectiveSector } from './sectors'
+import { COLUMNS, DEFAULT_ACTION, SECTOR_LABEL, SENTIMENT_LABEL, SENTIMENT_STYLE, columnFor, effectiveSector, modelLabel } from './sectors'
 
 const base: Message = {
   id: '1', customerName: 'A', rawContent: 'x', assignedSector: null, sentiment: null,
   urgencyScore: null, confidenceScore: null, summary: null, suggestedAction: null,
-  correctedSector: null, status: 'COMPLETED', createdAt: '2026-01-01T00:00:00Z', processedAt: null,
+  correctedSector: null, status: 'COMPLETED', createdAt: '2026-01-01T00:00:00Z', processedAt: null, resolvedAt: null,
 }
+
+describe('modelLabel', () => {
+  it('traduz provedor:modelo em rótulo legível', () => {
+    expect(modelLabel('anthropic:claude-haiku-4-5-20251001')).toBe('Claude · claude-haiku-4-5-20251001')
+    expect(modelLabel('ollama:llama3.1')).toBe('Ollama · llama3.1')
+    expect(modelLabel('fake')).toBe('Simulado')
+    expect(modelLabel('mock')).toBe('Simulado (mock)')
+    expect(modelLabel('novo:x:y')).toBe('novo · x:y') // provedor desconhecido e modelo com dois-pontos
+  })
+  it('sem modelo mostra travessão', () => {
+    expect(modelLabel(null)).toBe('—')
+    expect(modelLabel(undefined)).toBe('—')
+    expect(modelLabel('')).toBe('—')
+  })
+})
 
 describe('sectors', () => {
   it('effectiveSector prioriza a correção', () => {
@@ -25,7 +40,7 @@ describe('sectors', () => {
     expect(columnFor({ ...base, sentiment: 'CRITICAL' })).toBe('URGENT')
   })
   it('tabelas cobrem todos os setores e sentimentos', () => {
-    expect(COLUMNS.map((c) => c.id)).toEqual(['FINANCIAL', 'STOCK', 'SUPPORT', 'SALES', 'URGENT'])
+    expect(COLUMNS.map((c) => c.id)).toEqual(['FINANCIAL', 'STOCK', 'SUPPORT', 'SALES', 'URGENT', 'RESOLVED'])
     expect(Object.keys(SECTOR_LABEL)).toHaveLength(5)
     expect(Object.keys(DEFAULT_ACTION)).toHaveLength(5)
     expect(Object.keys(SENTIMENT_LABEL).sort()).toEqual(Object.keys(SENTIMENT_STYLE).sort())

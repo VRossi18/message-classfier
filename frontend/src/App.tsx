@@ -1,12 +1,12 @@
 import { Moon, Radio, Send, Sun } from 'lucide-react'
 import { useEffect, useState } from 'react'
-import { Toaster } from 'sonner'
+import { toast, Toaster } from 'sonner'
 import { KanbanBoard } from '@/components/kanban/KanbanBoard'
 import { MessageDetailDialog } from '@/components/message/MessageDetailDialog'
 import { MetricsPanel } from '@/components/metrics/MetricsPanel'
 import { PlaygroundPanel } from '@/components/playground/PlaygroundPanel'
 import { Button } from '@/components/ui/button'
-import { useMessages } from '@/hooks/useMessages'
+import { useMessages, useResolveMessage } from '@/hooks/useMessages'
 import { useRealtime } from '@/hooks/useRealtime'
 
 function useTheme() {
@@ -33,6 +33,15 @@ export default function App() {
   const { connected } = useRealtime()
   const { dark, toggle } = useTheme()
   const [openId, setOpenId] = useState<string>()
+  const resolve = useResolveMessage()
+  const resolveFromCard = (id: string) =>
+    resolve.mutate(
+      { id, resolved: true },
+      {
+        onSuccess: () => toast.success('Mensagem marcada como resolvida'),
+        onError: () => toast.error('Não foi possível resolver a mensagem'),
+      },
+    )
 
   return (
     <div className="mx-auto flex max-w-[1600px] flex-col gap-4 px-4 py-6">
@@ -73,7 +82,7 @@ export default function App() {
           ) : isLoading ? (
             <p className="text-sm text-muted">Carregando…</p>
           ) : (
-            <KanbanBoard messages={messages} onOpen={setOpenId} />
+            <KanbanBoard messages={messages} onOpen={setOpenId} onResolve={resolveFromCard} />
           )}
         </main>
         <aside id="playground" className="scroll-mt-4 lg:sticky lg:top-4 lg:self-start">

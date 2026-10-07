@@ -4,11 +4,16 @@ import { SYSTEM_PROMPT, userPrompt } from './prompt.js'
 import type { LlmClassifier } from './types.js'
 
 export class OllamaClassifier implements LlmClassifier {
+  readonly name: string
+
   constructor(
     private readonly baseUrl: string,
     private readonly model: string,
     private readonly fetchFn: typeof fetch = fetch,
-  ) {}
+    private readonly timeoutMs = 30_000,
+  ) {
+    this.name = `ollama:${model}`
+  }
 
   async classify(rawContent: string): Promise<ClassificationResult> {
     let lastError: unknown
@@ -26,6 +31,7 @@ export class OllamaClassifier implements LlmClassifier {
   private async once(rawContent: string): Promise<ClassificationResult> {
     const res = await this.fetchFn(`${this.baseUrl}/api/chat`, {
       method: 'POST',
+      signal: AbortSignal.timeout(this.timeoutMs),
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         model: this.model,

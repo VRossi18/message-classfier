@@ -9,9 +9,13 @@ export type { LlmClassifier } from './types.js'
 export function createClassifier(config: Config): LlmClassifier {
   switch (config.LLM_PROVIDER) {
     case 'anthropic':
-      return new AnthropicClassifier(config.ANTHROPIC_API_KEY ?? '', config.ANTHROPIC_MODEL)
+      return new AnthropicClassifier({
+        apiKey: config.ANTHROPIC_API_KEY ?? '',
+        model: config.ANTHROPIC_MODEL,
+        timeoutMs: config.LLM_TIMEOUT_MS,
+      })
     case 'ollama':
-      return new OllamaClassifier(config.OLLAMA_URL, config.OLLAMA_MODEL)
+      return new OllamaClassifier(config.OLLAMA_URL, config.OLLAMA_MODEL, fetch, config.LLM_TIMEOUT_MS)
     case 'fake':
       return new FakeClassifier()
   }

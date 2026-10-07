@@ -12,12 +12,22 @@ export function useRealtime() {
   useEffect(() => {
     let close: (() => void) | undefined
     let cancelled = false
+    let wasDown = false
     connectEvents(
       (event) => {
         qc.setQueryData<Message[]>(messagesKey, (old) => applyEvent(old, event))
         qc.invalidateQueries({ queryKey: metricsKey })
       },
-      setConnected,
+      (up) => {
+        setConnected(up)
+        if (!up) wasDown = true
+        else if (wasDown) {
+          // Eventos emitidos durante a queda se perderam: ressincroniza com o servidor.
+          wasDown = false
+          qc.invalidateQueries({ queryKey: messagesKey })
+          qc.invalidateQueries({ queryKey: metricsKey })
+        }
+      },
     ).then((fn) => {
       if (cancelled) fn()
       else close = fn

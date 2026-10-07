@@ -4,7 +4,7 @@ import { CreateMessageSchema, MessageEventSchema, MessageSchema } from './schema
 const valid = {
   id: '1', customerName: 'A', rawContent: 'x', assignedSector: 'STOCK', sentiment: 'CALM',
   urgencyScore: 0.5, confidenceScore: 1, summary: 's', suggestedAction: 'a',
-  correctedSector: null, status: 'COMPLETED', createdAt: '2026-01-01T00:00:00Z', processedAt: null,
+  correctedSector: null, status: 'COMPLETED', createdAt: '2026-01-01T00:00:00Z', processedAt: null, resolvedAt: null,
 }
 
 describe('CreateMessageSchema', () => {

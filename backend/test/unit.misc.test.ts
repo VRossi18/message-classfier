@@ -85,7 +85,7 @@ describe('toDto (bordas)', () => {
     id: 'i', customerName: 'A', rawContent: 'x', assignedSector: 'STOCK', sentiment: 'ANGRY',
     urgencyScore: '0.00', confidenceScore: '1.00', summary: 's', suggestedAction: 'a',
     correctedSector: 'SALES', status: 'COMPLETED',
-    createdAt: new Date('2026-01-01T10:00:00Z'), processedAt: new Date('2026-01-01T10:00:05Z'),
+    createdAt: new Date('2026-01-01T10:00:00Z'), processedAt: new Date('2026-01-01T10:00:05Z'), resolvedAt: null, classifier: 'fake',
   }
   it('"0.00" vira 0 (não null) e mantém datas ISO', () => {
     const d = toDto(row)
@@ -107,7 +107,7 @@ describe('createMessagesRepo.metrics (db falso)', () => {
     createMessagesRepo({ select: () => ({ from: async () => rows }) } as never)
 
   it('sem concluídas: accuracy null', async () => {
-    const m = await repoWith([{ total: 3, calm: 0, neutral: 0, angry: 0, critical: 0, completed: 0, corrected: 0 }]).metrics()
+    const m = await repoWith([{ total: 3, calm: 0, neutral: 0, angry: 0, critical: 0, completed: 0, resolved: 0, corrected: 0 }]).metrics()
     expect(m.accuracy).toBeNull()
     expect(m.total).toBe(3)
   })
@@ -117,9 +117,17 @@ describe('createMessagesRepo.metrics (db falso)', () => {
       total: 0,
       sentiments: { CALM: 0, NEUTRAL: 0, ANGRY: 0, CRITICAL: 0 },
       completed: 0,
+      resolved: 0,
       corrected: 0,
       accuracy: null,
     })
+  })
+  it('repassa o contador de resolvidas sem afetar a precisão', async () => {
+    const m = await repoWith([
+      { total: 10, calm: 4, neutral: 3, angry: 2, critical: 1, completed: 8, resolved: 5, corrected: 2 },
+    ]).metrics()
+    expect(m.resolved).toBe(5)
+    expect(m.accuracy).toBe(0.75) // 1 - 2/8: resolver não muda a precisão da IA
   })
   it('mapeia sentimentos e calcula precisão 1 - corrigidas/concluídas', async () => {
     const m = await repoWith([{ total: 10, calm: 4, neutral: 3, angry: 2, critical: 1, completed: 8, corrected: 2 }]).metrics()

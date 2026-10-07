@@ -16,6 +16,8 @@ export const messages = pgTable('messages', {
   confidenceScore: decimal('confidence_score', { precision: 3, scale: 2 }),
   summary: text('summary'),
   suggestedAction: text('suggested_action'),
+  // Quem classificou (provedor:modelo), para auditoria e comparação entre modelos.
+  classifier: text('classifier'),
 
   // Feedback humano (human-in-the-loop)
   correctedSector: sectorEnum('corrected_sector'),
@@ -23,6 +25,9 @@ export const messages = pgTable('messages', {
   status: statusEnum('status').notNull().default('PENDING'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   processedAt: timestamp('processed_at'),
+
+  // Dar baixa no atendimento: propriedade ortogonal ao processamento (não altera `status`).
+  resolvedAt: timestamp('resolved_at'),
 })
 
 export type MessageRow = typeof messages.$inferSelect

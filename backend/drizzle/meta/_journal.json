@@ -8,6 +8,20 @@
       "when": 1791392998460,
       "tag": "0000_opposite_dagger",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1791404707820,
+      "tag": "0001_daily_kulan_gath",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1791408757198,
+      "tag": "0002_faithful_ravenous",
+      "breakpoints": true
     }
   ]
 }

@@ -26,6 +26,15 @@ const RULES: { sector: Sector; words: RegExp }[] = [
   { sector: 'SUPPORT', words: /erro|bug|n[aã]o funciona|travou|login|senha|como (uso|fa[cç]o)|ajuda/i },
 ]
 
+/** Texto inteiro até `max` caracteres; acima disso corta numa fronteira de palavra e fecha com "…". */
+export function summarize(text: string, max = 140): string {
+  const t = text.trim().replace(/\s+/g, ' ')
+  if (t.length <= max) return t
+  const cut = t.slice(0, max - 1)
+  const space = cut.lastIndexOf(' ')
+  return `${(space > max / 2 ? cut.slice(0, space) : cut).trimEnd()}…`
+}
+
 function classify(text: string) {
   const hit = RULES.find((r) => r.words.test(text))
   const caps = text.replace(/[^A-Za-zÀ-ú]/g, '')
@@ -41,7 +50,7 @@ function classify(text: string) {
     sentiment,
     urgencyScore: Math.round(urgency * 100) / 100,
     confidenceScore: Math.round(confidence * 100) / 100,
-    summary: text.length > 80 ? `${text.slice(0, 77)}...` : text,
+    summary: summarize(text),
     suggestedAction: DEFAULT_ACTION[sentiment === 'CRITICAL' ? 'HUMAN_REVIEW' : sector],
   }
 }
@@ -61,6 +70,7 @@ export function createMessage(input: { customerName: string; rawContent: string 
     status: 'PENDING',
     createdAt: new Date().toISOString(),
     processedAt: null,
+    resolvedAt: null,
   }
   messages.push(m)
   emit('message.created', m)
@@ -78,12 +88,37 @@ export function createMessage(input: { customerName: string; rawContent: string 
       confidenceScore: c.confidenceScore,
       summary: c.summary,
       suggestedAction: c.suggestedAction,
+      model: 'mock',
       status: 'COMPLETED',
       processedAt: new Date().toISOString(),
     } satisfies Partial<Message>)
     emit('message.updated', m)
   }, 1800 + Math.random() * 1200)
   return { ...m }
+}
+
+export type ResolveResult = { ok: true; message: Message } | { ok: false; reason: 'not_found' | 'not_completed' }
+
+/** Mesmas regras do backend: 404 inexistente, 409 se não concluída, idempotente. */
+export function resolveMessage(id: string): ResolveResult {
+  const m = messages.find((x) => x.id === id)
+  if (!m) return { ok: false, reason: 'not_found' }
+  if (m.status !== 'COMPLETED') return { ok: false, reason: 'not_completed' }
+  if (!m.resolvedAt) {
+    m.resolvedAt = new Date().toISOString()
+    emit('message.updated', m)
+  }
+  return { ok: true, message: { ...m } }
+}
+
+export function reopenMessage(id: string): ResolveResult {
+  const m = messages.find((x) => x.id === id)
+  if (!m) return { ok: false, reason: 'not_found' }
+  if (m.resolvedAt) {
+    m.resolvedAt = null
+    emit('message.updated', m)
+  }
+  return { ok: true, message: { ...m } }
 }
 
 export function correctSector(id: string, sector: Sector): Message | null {

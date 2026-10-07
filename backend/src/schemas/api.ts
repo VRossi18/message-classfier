@@ -17,6 +17,8 @@ export const MessageDtoSchema = z.object({
   status: StatusSchema,
   createdAt: z.string(),
   processedAt: z.string().nullable(),
+  resolvedAt: z.string().nullable(),
+  model: z.string().nullable(),
 })
 export type MessageDto = z.infer<typeof MessageDtoSchema>
 
@@ -33,6 +35,7 @@ export const MetricsDtoSchema = z.object({
   sentiments: z.object({ CALM: z.number(), NEUTRAL: z.number(), ANGRY: z.number(), CRITICAL: z.number() }),
   corrected: z.number(),
   completed: z.number(),
+  resolved: z.number(),
   accuracy: z.number().nullable(),
 })
 export type MetricsDto = z.infer<typeof MetricsDtoSchema>

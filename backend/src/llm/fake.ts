@@ -8,8 +8,19 @@ const RULES: { sector: ClassificationResult['sector']; words: RegExp; action: st
   { sector: 'SUPPORT', words: /erro|bug|n[aã]o funciona|travou|login|senha|como (uso|fa[cç]o)|ajuda/i, action: 'Abrir ticket técnico de atendimento.' },
 ]
 
+/** Texto inteiro até `max` caracteres; acima disso corta numa fronteira de palavra e fecha com "…". */
+export function summarize(text: string, max = 140): string {
+  const t = text.trim().replace(/\s+/g, ' ')
+  if (t.length <= max) return t
+  const cut = t.slice(0, max - 1)
+  const space = cut.lastIndexOf(' ')
+  return `${(space > max / 2 ? cut.slice(0, space) : cut).trimEnd()}…`
+}
+
 /** Classificador determinístico por palavras-chave, para testes, CI e demo sem chave. */
 export class FakeClassifier implements LlmClassifier {
+  readonly name = 'fake'
+
   async classify(text: string): Promise<ClassificationResult> {
     const hit = RULES.find((r) => r.words.test(text))
     const letters = text.replace(/[^A-Za-zÀ-ú]/g, '')
@@ -24,7 +35,7 @@ export class FakeClassifier implements LlmClassifier {
       sentiment,
       urgencyScore,
       confidenceScore: hit ? 0.9 : 0.3,
-      summary: text.length > 80 ? `${text.slice(0, 77)}...` : text,
+      summary: summarize(text),
       suggestedAction: sentiment === 'CRITICAL' ? 'Alertar gerente de contas imediatamente.' : (hit?.action ?? 'Revisar manualmente.'),
     }
   }

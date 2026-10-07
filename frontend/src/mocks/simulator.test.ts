@@ -1,6 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { DEFAULT_ACTION } from '@/lib/sectors'
-import { correctSector, createMessage, getMetrics, listMessages, subscribe } from './simulator'
+import {
+  correctSector,
+  createMessage,
+  getMetrics,
+  listMessages,
+  reopenMessage,
+  resolveMessage,
+  subscribe,
+  summarize,
+} from './simulator'
 
 beforeEach(() => {
   vi.useFakeTimers()
@@ -95,11 +104,16 @@ describe('simulador: regras de classificação', () => {
     expect((await classify('boleto e prazo de entrega')).assignedSector).toBe('FINANCIAL')
   })
 
-  it('resumo trunca textos longos em 80 chars', async () => {
-    const m = await classify('a'.repeat(200))
-    expect(m.summary).toHaveLength(80)
-    expect(m.summary!.endsWith('...')).toBe(true)
+  it('resumo mantém textos de até 140 chars e abrevia os maiores em fronteira de palavra', async () => {
     expect((await classify('curto')).summary).toBe('curto')
+    const meio = 'Preciso da segunda via do boleto, venceu ontem e não consegui pagar a tempo por causa do sistema.'
+    expect((await classify(meio)).summary).toBe(meio) // 97 chars: antes era cortado em 80
+
+    const longo = 'palavra '.repeat(40)
+    const s = (await classify(longo)).summary!
+    expect(s.length).toBeLessThanOrEqual(140)
+    expect(s.endsWith('palavra…')).toBe(true)
+    expect(summarize('a'.repeat(200))).toHaveLength(140) // sem espaços: corta seco
   })
 })
 
@@ -125,5 +139,50 @@ describe('simulador: correção e métricas', () => {
     const after = getMetrics()
     expect(after.total).toBe(before.total + 1)
     expect(after.corrected).toBe(before.corrected + 1)
+  })
+})
+
+describe('simulador: resolver e reabrir (mesmas regras do backend)', () => {
+  it('resolve uma concluída, emite message.updated e conta nas métricas', async () => {
+    const m = await classify('boleto')
+    const fn = vi.fn()
+    const off = subscribe(fn)
+    const before = getMetrics().resolved
+    const r = resolveMessage(m.id)
+    expect(r.ok && r.message.resolvedAt).toEqual(expect.any(String))
+    expect(fn).toHaveBeenCalledWith(expect.objectContaining({ type: 'message.updated' }))
+    expect(getMetrics().resolved).toBe(before + 1)
+    off()
+  })
+
+  it('é idempotente: repetir mantém a data e não emite de novo', async () => {
+    const m = await classify('boleto')
+    const first = resolveMessage(m.id)
+    const fn = vi.fn()
+    const off = subscribe(fn)
+    const again = resolveMessage(m.id)
+    expect(again.ok && first.ok && again.message.resolvedAt).toBe(first.ok && first.message.resolvedAt)
+    expect(fn).not.toHaveBeenCalled()
+    off()
+  })
+
+  it('não resolve mensagem ainda na fila (not_completed) nem inexistente (not_found)', () => {
+    const pending = createMessage({ customerName: 'P', rawContent: 'boleto' })
+    expect(resolveMessage(pending.id)).toEqual({ ok: false, reason: 'not_completed' })
+    expect(resolveMessage('nope')).toEqual({ ok: false, reason: 'not_found' })
+    expect(reopenMessage('nope')).toEqual({ ok: false, reason: 'not_found' })
+  })
+
+  it('reabre uma resolvida e é idempotente numa já aberta', async () => {
+    const m = await classify('boleto')
+    resolveMessage(m.id)
+    const fn = vi.fn()
+    const off = subscribe(fn)
+    const r = reopenMessage(m.id)
+    expect(r.ok && r.message.resolvedAt).toBeNull()
+    expect(fn).toHaveBeenCalledTimes(1)
+    reopenMessage(m.id)
+    expect(fn).toHaveBeenCalledTimes(1)
+    off()
   })
 })

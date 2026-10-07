@@ -15,8 +15,13 @@ export function MetricsPanel() {
   const classified = data ? Object.values(data.sentiments).reduce((a, b) => a + b, 0) : 0
 
   return (
-    <section aria-label="Métricas" className="grid gap-4 rounded-xl border border-border bg-surface p-4 sm:grid-cols-3">
+    <section aria-label="Métricas" className="grid gap-4 rounded-xl border border-border bg-surface p-4 sm:grid-cols-2 lg:grid-cols-4">
       <Stat label="Atendimentos" value={String(total)} />
+      <Stat
+        label="Resolvidas"
+        value={String(data?.resolved ?? 0)}
+        hint={total > 0 ? `${Math.round(((data?.resolved ?? 0) / total) * 100)}% do total` : undefined}
+      />
       <Stat
         label="Precisão da IA"
         value={data?.accuracy == null ? '—' : `${Math.round(data.accuracy * 100)}%`}

@@ -5,8 +5,10 @@ export function computeMetrics(messages: Message[]): Metrics {
   const sentiments: Record<Sentiment, number> = { CALM: 0, NEUTRAL: 0, ANGRY: 0, CRITICAL: 0 }
   let completed = 0
   let corrected = 0
+  let resolved = 0
   for (const m of messages) {
     if (m.sentiment) sentiments[m.sentiment]++
+    if (m.resolvedAt) resolved++
     if (m.status === 'COMPLETED') {
       completed++
       if (m.correctedSector && m.correctedSector !== m.assignedSector) corrected++
@@ -17,6 +19,7 @@ export function computeMetrics(messages: Message[]): Metrics {
     sentiments,
     corrected,
     completed,
+    resolved,
     accuracy: completed === 0 ? null : 1 - corrected / completed,
   }
 }

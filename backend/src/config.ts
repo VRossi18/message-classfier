@@ -11,13 +11,21 @@ const EnvSchema = z.object({
   OLLAMA_URL: z.string().default('http://localhost:11434'),
   OLLAMA_MODEL: z.string().default('llama3.1'),
   CONFIDENCE_THRESHOLD: z.coerce.number().min(0).max(1).default(0.5),
+  /** Tempo máximo de cada chamada ao LLM. */
+  LLM_TIMEOUT_MS: z.coerce.number().int().positive().default(30_000),
+  /** Classificações simultâneas no worker (respeita limites de taxa do provedor). */
+  LLM_CONCURRENCY: z.coerce.number().int().min(1).max(50).default(5),
 })
 
 export type Config = z.infer<typeof EnvSchema>
 
-export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
+/**
+ * `requireLlm: false` é para processos que não classificam (a API): eles não precisam da chave
+ * e, no compose, nem a recebem.
+ */
+export function loadConfig(env: NodeJS.ProcessEnv = process.env, opts: { requireLlm?: boolean } = {}): Config {
   const config = EnvSchema.parse(env)
-  if (config.LLM_PROVIDER === 'anthropic' && !config.ANTHROPIC_API_KEY) {
+  if ((opts.requireLlm ?? true) && config.LLM_PROVIDER === 'anthropic' && !config.ANTHROPIC_API_KEY) {
     throw new Error('ANTHROPIC_API_KEY é obrigatório quando LLM_PROVIDER=anthropic')
   }
   return config

@@ -4,6 +4,7 @@ import type { Message } from '@/lib/schemas'
 
 const mutate = vi.fn()
 const createMutate = vi.fn()
+const resolveMutate = vi.fn()
 let createPending = false
 let metricsData: unknown
 
@@ -12,6 +13,7 @@ vi.mock('@/hooks/useMessages', () => ({
   useMetrics: () => ({ data: metricsData }),
   useCorrectSector: () => ({ mutate }),
   useCreateMessage: () => ({ mutate: createMutate, isPending: createPending }),
+  useResolveMessage: () => ({ mutate: resolveMutate, isPending: false }),
 }))
 // Radix Select depende de APIs de ponteiro ausentes no jsdom: troca por <select> nativo.
 vi.mock('@/components/ui/select', () => ({
@@ -34,7 +36,7 @@ import { PlaygroundPanel } from './playground/PlaygroundPanel'
 const base: Message = {
   id: '1', customerName: 'Ana', rawContent: 'texto bruto', assignedSector: null, sentiment: null,
   urgencyScore: null, confidenceScore: null, summary: null, suggestedAction: null,
-  correctedSector: null, status: 'PENDING', createdAt: '2026-01-01T00:00:00Z', processedAt: null,
+  correctedSector: null, status: 'PENDING', createdAt: '2026-01-01T00:00:00Z', processedAt: null, resolvedAt: null,
 }
 const done = (o: Partial<Message> = {}): Message => ({
   ...base, status: 'COMPLETED', assignedSector: 'STOCK', sentiment: 'CALM', urgencyScore: 0.42,
@@ -83,6 +85,35 @@ describe('MessageCard', () => {
   })
 })
 
+describe('MessageCard: resolvida', () => {
+  const resolvedAt = '2026-01-02T09:00:00Z'
+  it('mostra o selo "Resolvida" no lugar do sentimento e esconde o medidor e o atalho', () => {
+    render(<ul><MessageCard message={done({ resolvedAt })} onOpen={() => {}} onResolve={() => {}} /></ul>)
+    expect(screen.getByText('Resolvida')).toBeInTheDocument()
+    expect(screen.queryByText('Calmo')).toBeNull()
+    expect(screen.queryByRole('meter')).toBeNull()
+    expect(screen.queryByRole('button', { name: /Marcar como resolvida/ })).toBeNull()
+  })
+  it('atalho de resolver aparece só em COMPLETED aberta, é irmão do card e chama onResolve', () => {
+    const onOpen = vi.fn()
+    const onResolve = vi.fn()
+    render(<ul><MessageCard message={done()} onOpen={onOpen} onResolve={onResolve} /></ul>)
+    const shortcut = screen.getByRole('button', { name: 'Marcar como resolvida: Ana' })
+    expect(shortcut.closest('button:not([aria-label])')).toBeNull() // não está aninhado em outro botão
+    fireEvent.click(shortcut)
+    expect(onResolve).toHaveBeenCalledWith('1')
+    expect(onOpen).not.toHaveBeenCalled()
+  })
+  it.each([['PENDING'], ['PROCESSING'], ['FAILED']] as const)('sem atalho para mensagem %s', (status) => {
+    render(<ul><MessageCard message={{ ...base, status }} onOpen={() => {}} onResolve={() => {}} /></ul>)
+    expect(screen.queryByRole('button', { name: /Marcar como resolvida/ })).toBeNull()
+  })
+  it('sem a prop onResolve não há atalho', () => {
+    render(<ul><MessageCard message={done()} onOpen={() => {}} /></ul>)
+    expect(screen.queryByRole('button', { name: /Marcar como resolvida/ })).toBeNull()
+  })
+})
+
 describe('KanbanBoard', () => {
   const column = (name: string) => screen.getByRole('heading', { name }).closest('section')!
 
@@ -102,7 +133,19 @@ describe('KanbanBoard', () => {
   })
   it('colunas vazias mostram placeholder', () => {
     render(<KanbanBoard messages={[]} onOpen={() => {}} />)
-    expect(screen.getAllByText('Nenhuma mensagem')).toHaveLength(6)
+    expect(screen.getAllByText('Nenhuma mensagem')).toHaveLength(7)
+  })
+  it('mensagem resolvida vai para a coluna Resolvidas, mesmo sendo crítica', () => {
+    const msgs = [done({ id: '5', customerName: 'Eva', sentiment: 'CRITICAL', resolvedAt: '2026-01-02T09:00:00Z' })]
+    render(<KanbanBoard messages={msgs} onOpen={() => {}} />)
+    expect(column('Resolvidas')).toHaveTextContent('Eva')
+    expect(column('Urgente')).not.toHaveTextContent('Eva')
+  })
+  it('repassa onResolve ao atalho do card', () => {
+    const onResolve = vi.fn()
+    render(<KanbanBoard messages={[done()]} onOpen={() => {}} onResolve={onResolve} />)
+    fireEvent.click(screen.getByRole('button', { name: /Marcar como resolvida/ }))
+    expect(onResolve).toHaveBeenCalledWith('1')
   })
   it('repassa onOpen', () => {
     const onOpen = vi.fn()
@@ -119,7 +162,7 @@ describe('MetricsPanel', () => {
     expect(screen.getByText('Calmo 0')).toBeInTheDocument()
   })
   it('com dados mostra total, precisão e legenda', () => {
-    metricsData = { total: 7, sentiments: { CALM: 2, NEUTRAL: 1, ANGRY: 1, CRITICAL: 0 }, corrected: 1, completed: 4, accuracy: 0.75 }
+    metricsData = { total: 7, sentiments: { CALM: 2, NEUTRAL: 1, ANGRY: 1, CRITICAL: 0 }, corrected: 1, completed: 4, resolved: 3, accuracy: 0.75 }
     render(<MetricsPanel />)
     expect(screen.getByText('7')).toBeInTheDocument()
     expect(screen.getByText('75%')).toBeInTheDocument()
@@ -129,7 +172,7 @@ describe('MetricsPanel', () => {
     expect(screen.queryByTitle(/Crítico:/)).toBeNull()
   })
   it('accuracy null mostra travessão mesmo com dados', () => {
-    metricsData = { total: 1, sentiments: { CALM: 0, NEUTRAL: 0, ANGRY: 0, CRITICAL: 0 }, corrected: 0, completed: 0, accuracy: null }
+    metricsData = { total: 1, sentiments: { CALM: 0, NEUTRAL: 0, ANGRY: 0, CRITICAL: 0 }, corrected: 0, completed: 0, resolved: 0, accuracy: null }
     render(<MetricsPanel />)
     expect(screen.getByText('—')).toBeInTheDocument()
   })
@@ -152,6 +195,38 @@ describe('MessageDetailDialog', () => {
     expect(screen.getByText('42%')).toBeInTheDocument()
     expect(screen.getByText('90%')).toBeInTheDocument()
     expect(screen.getByLabelText('Corrigir setor')).toHaveValue('SALES')
+  })
+  it('mostra quem classificou, com rótulo legível, e travessão quando não há registro', () => {
+    const { unmount } = render(<MessageDetailDialog message={done({ model: 'anthropic:claude-haiku-4-5-20251001' })} onClose={() => {}} />)
+    expect(screen.getByText('Classificado por')).toBeInTheDocument()
+    expect(screen.getByText('Claude · claude-haiku-4-5-20251001')).toBeInTheDocument()
+    unmount()
+    render(<MessageDetailDialog message={done({ model: null })} onClose={() => {}} />)
+    expect(screen.getByText('Classificado por').nextElementSibling).toHaveTextContent('—')
+  })
+  it('COMPLETED aberta oferece "Marcar como resolvida"; o clique resolve e avisa por toast', () => {
+    render(<MessageDetailDialog message={done()} onClose={() => {}} />)
+    expect(screen.queryByRole('button', { name: /Reabrir/ })).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: /Marcar como resolvida/ }))
+    expect(resolveMutate).toHaveBeenCalledWith({ id: '1', resolved: true }, expect.any(Object))
+    const cbs = resolveMutate.mock.calls[0]![1]
+    cbs.onSuccess()
+    expect(toast.success).toHaveBeenCalledWith('Mensagem marcada como resolvida')
+    cbs.onError()
+    expect(toast.error).toHaveBeenCalled()
+  })
+  it('resolvida mostra a data e oferece "Reabrir"', () => {
+    render(<MessageDetailDialog message={done({ resolvedAt: '2026-01-02T09:00:00Z' })} onClose={() => {}} />)
+    expect(screen.getByText(/Resolvida em/)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Marcar como resolvida/ })).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: /Reabrir/ }))
+    expect(resolveMutate).toHaveBeenCalledWith({ id: '1', resolved: false }, expect.any(Object))
+    resolveMutate.mock.calls[0]![1].onSuccess()
+    expect(toast.success).toHaveBeenCalledWith('Mensagem reaberta')
+  })
+  it.each([['PENDING'], ['PROCESSING'], ['FAILED']] as const)('mensagem %s não oferece resolver', (status) => {
+    render(<MessageDetailDialog message={{ ...base, status }} onClose={() => {}} />)
+    expect(screen.queryByRole('button', { name: /resolvida|Reabrir/ })).toBeNull()
   })
   it('trocar o select chama mutate com id e setor, e toasts de sucesso/erro', () => {
     render(<MessageDetailDialog message={done()} onClose={() => {}} />)

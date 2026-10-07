@@ -2,7 +2,9 @@ import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod'
 import type { MessageEvent } from '../../schemas/api.js'
 import type { ServerDeps } from '../server.js'
 
-const HEARTBEAT_MS = 25_000
+// Evento nomeado (e não comentário ": ping"): o EventSource do navegador não expõe comentários,
+// e o cliente precisa enxergar o batimento para detectar conexões zumbis (ver frontend/src/lib/sse.ts).
+const HEARTBEAT_MS = 15_000
 
 export const eventsRoutes: FastifyPluginAsyncZod<ServerDeps> = async (app, { bus, corsOrigin }) => {
   app.get('/api/events', async (req, reply) => {
@@ -21,7 +23,7 @@ export const eventsRoutes: FastifyPluginAsyncZod<ServerDeps> = async (app, { bus
     })
     reply.raw.write('retry: 3000\n\n')
 
-    const heartbeat = setInterval(() => reply.raw.write(': ping\n\n'), HEARTBEAT_MS)
+    const heartbeat = setInterval(() => reply.raw.write('event: ping\ndata: {}\n\n'), HEARTBEAT_MS)
     req.raw.on('close', () => {
       clearInterval(heartbeat)
       unsubscribe()

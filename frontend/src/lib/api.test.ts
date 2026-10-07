@@ -5,7 +5,7 @@ import type { Message } from './schemas'
 const msg: Message = {
   id: '1', customerName: 'A', rawContent: 'x', assignedSector: null, sentiment: null,
   urgencyScore: null, confidenceScore: null, summary: null, suggestedAction: null,
-  correctedSector: null, status: 'PENDING', createdAt: '2026-01-01T00:00:00Z', processedAt: null,
+  correctedSector: null, status: 'PENDING', createdAt: '2026-01-01T00:00:00Z', processedAt: null, resolvedAt: null,
 }
 
 const json = (body: unknown, status = 200) =>
@@ -45,8 +45,21 @@ describe('api', () => {
     expect(JSON.parse(init.body)).toEqual({ correctedSector: 'SALES' })
   })
 
+  it.each([
+    ['resolveMessage', 'resolve'],
+    ['reopenMessage', 'reopen'],
+  ] as const)('%s faz POST sem corpo e SEM Content-Type (o Fastify rejeita JSON vazio com 400)', async (fn, action) => {
+    fetchMock.mockReturnValue(json(msg))
+    await api[fn]('abc')
+    const [url, init] = fetchMock.mock.calls[0]!
+    expect(url).toBe(`/api/messages/abc/${action}`)
+    expect(init.method).toBe('POST')
+    expect(init.body).toBeUndefined()
+    expect(Object.keys(init.headers).map((h) => h.toLowerCase())).not.toContain('content-type')
+  })
+
   it('getMetrics valida o formato', async () => {
-    const metrics = { total: 1, sentiments: { CALM: 1, NEUTRAL: 0, ANGRY: 0, CRITICAL: 0 }, corrected: 0, completed: 1, accuracy: 1 }
+    const metrics = { total: 1, sentiments: { CALM: 1, NEUTRAL: 0, ANGRY: 0, CRITICAL: 0 }, corrected: 0, completed: 1, resolved: 0, accuracy: 1 }
     fetchMock.mockReturnValue(json(metrics))
     await expect(api.getMetrics()).resolves.toEqual(metrics)
   })

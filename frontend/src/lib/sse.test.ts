@@ -26,7 +26,7 @@ class FakeES {
 const message = {
   id: '1', customerName: 'A', rawContent: 'x', assignedSector: null, sentiment: null,
   urgencyScore: null, confidenceScore: null, summary: null, suggestedAction: null,
-  correctedSector: null, status: 'PENDING', createdAt: '2026-01-01T00:00:00Z', processedAt: null,
+  correctedSector: null, status: 'PENDING', createdAt: '2026-01-01T00:00:00Z', processedAt: null, resolvedAt: null,
 }
 
 beforeEach(() => {
@@ -76,6 +76,52 @@ describe('connectEvents (EventSource real)', () => {
     const { es, close } = await setup()
     close()
     expect(es.closed).toBe(true)
+  })
+
+  describe('conexão zumbi (sem eventos)', () => {
+    beforeEach(() => vi.useFakeTimers())
+    afterEach(() => vi.useRealTimers())
+
+    it('reabre a conexão e avisa a queda depois de 45 s de silêncio', async () => {
+      const { es, onStatus } = await setup()
+      es.onopen?.()
+      vi.advanceTimersByTime(44_999)
+      expect(FakeES.last).toBe(es)
+      vi.advanceTimersByTime(1)
+      expect(es.closed).toBe(true)
+      expect(FakeES.last).not.toBe(es)
+      expect(onStatus.mock.calls).toEqual([[true], [false]])
+    })
+
+    it('ping e eventos reiniciam o relógio', async () => {
+      const { es, onEvent } = await setup()
+      es.onopen?.()
+      vi.advanceTimersByTime(30_000)
+      es.emit('ping', '{}')
+      vi.advanceTimersByTime(30_000)
+      es.emit('message.created', JSON.stringify({ type: 'message.created', message }))
+      vi.advanceTimersByTime(30_000)
+      expect(FakeES.last).toBe(es)
+      expect(es.closed).toBe(false)
+      expect(onEvent).toHaveBeenCalledTimes(1)
+    })
+
+    it('depois de fechar pelo chamador não reabre mais', async () => {
+      const { es, close } = await setup()
+      close()
+      vi.advanceTimersByTime(120_000)
+      expect(FakeES.last).toBe(es)
+    })
+
+    it('a conexão nova também é vigiada', async () => {
+      const { es } = await setup()
+      vi.advanceTimersByTime(45_000)
+      const second = FakeES.last
+      expect(second).not.toBe(es)
+      vi.advanceTimersByTime(45_000)
+      expect(second.closed).toBe(true)
+      expect(FakeES.last).not.toBe(second)
+    })
   })
 })
 

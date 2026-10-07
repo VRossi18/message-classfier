@@ -1,9 +1,11 @@
+import { CheckCircle2, RotateCcw } from 'lucide-react'
 import { toast } from 'sonner'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog'
 import { Select } from '@/components/ui/select'
-import { useCorrectSector } from '@/hooks/useMessages'
-import { SECTOR_LABEL, SENTIMENT_LABEL, SENTIMENT_STYLE, effectiveSector } from '@/lib/sectors'
+import { useCorrectSector, useResolveMessage } from '@/hooks/useMessages'
+import { SECTOR_LABEL, SENTIMENT_LABEL, SENTIMENT_STYLE, effectiveSector, modelLabel } from '@/lib/sectors'
 import { SectorSchema, type Message } from '@/lib/schemas'
 
 const OPTIONS = SectorSchema.options.map((s) => ({ value: s, label: SECTOR_LABEL[s] }))
@@ -11,6 +13,7 @@ const pct = (n: number | null) => (n === null ? '—' : `${Math.round(n * 100)}%
 
 export function MessageDetailDialog({ message, onClose }: { message: Message | undefined; onClose: () => void }) {
   const correct = useCorrectSector()
+  const toggle = useResolveMessage()
 
   return (
     <Dialog open={!!message} onOpenChange={(o) => !o && onClose()}>
@@ -26,6 +29,7 @@ export function MessageDetailDialog({ message, onClose }: { message: Message | u
           <DialogTitle className="pr-6 text-lg font-semibold">{message.customerName}</DialogTitle>
           <DialogDescription className="mt-1 text-xs text-muted">
             Recebida em {new Date(message.createdAt).toLocaleString('pt-BR')}
+            {message.resolvedAt && <> · Resolvida em {new Date(message.resolvedAt).toLocaleString('pt-BR')}</>}
           </DialogDescription>
 
           <blockquote className="mt-4 rounded-md border-l-4 border-accent bg-bg p-3 text-sm">
@@ -50,6 +54,11 @@ export function MessageDetailDialog({ message, onClose }: { message: Message | u
               <div className="col-span-2">
                 <Field label="Ação recomendada">{message.suggestedAction}</Field>
               </div>
+              <div className="col-span-2">
+                <Field label="Classificado por">
+                  <span className="text-xs text-muted">{modelLabel(message.model)}</span>
+                </Field>
+              </div>
             </dl>
           ) : (
             <p className="mt-4 text-sm text-muted">A IA ainda está analisando esta mensagem…</p>
@@ -73,6 +82,35 @@ export function MessageDetailDialog({ message, onClose }: { message: Message | u
                   )
                 }}
               />
+            </div>
+          )}
+
+          {message.status === 'COMPLETED' && (
+            <div className="mt-5 flex justify-end">
+              <Button
+                variant={message.resolvedAt ? 'outline' : 'primary'}
+                disabled={toggle.isPending}
+                onClick={() => {
+                  const resolved = !message.resolvedAt
+                  toggle.mutate(
+                    { id: message.id, resolved },
+                    {
+                      onSuccess: () => toast.success(resolved ? 'Mensagem marcada como resolvida' : 'Mensagem reaberta'),
+                      onError: () => toast.error('Não foi possível atualizar a mensagem'),
+                    },
+                  )
+                }}
+              >
+                {message.resolvedAt ? (
+                  <>
+                    <RotateCcw className="size-4" /> Reabrir
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle2 className="size-4" /> Marcar como resolvida
+                  </>
+                )}
+              </Button>
             </div>
           )}
         </DialogContent>

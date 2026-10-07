@@ -13,7 +13,7 @@ import {
 } from '../../src/queue/classify.queue.js'
 import { createMessagesRepo } from '../../src/repo/messages.js'
 import type { MessageDto } from '../../src/schemas/api.js'
-import { markFailed, processMessage } from '../../src/worker/processor.js'
+import { markFailed, processMessage, shouldMarkFailed } from '../../src/worker/processor.js'
 
 // Banco e Redis db próprios, para nunca tocar nos dados de desenvolvimento.
 export const ADMIN_URL = process.env.DATABASE_URL ?? 'postgres://dev:devpassword@localhost:5432/routing_db'
@@ -121,9 +121,9 @@ export async function startHarness(classifier: LlmClassifier, opts: { threshold?
     concurrency: 5,
   })
   const failedJobs: string[] = []
-  // Mesma lógica de src/entrypoints/worker.ts.
-  worker.on('failed', (job) => {
-    if (job && job.attemptsMade >= CLASSIFY_ATTEMPTS) {
+  // Mesma regra de src/entrypoints/worker.ts (tentativas esgotadas ou erro irrecuperável).
+  worker.on('failed', (job, err) => {
+    if (job && shouldMarkFailed(job, err)) {
       failedJobs.push(job.data.messageId)
       void markFailed(deps, job.data.messageId)
     }

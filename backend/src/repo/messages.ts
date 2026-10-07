@@ -21,6 +21,8 @@ export function toDto(row: MessageRow): MessageDto {
     status: row.status,
     createdAt: row.createdAt.toISOString(),
     processedAt: row.processedAt?.toISOString() ?? null,
+    resolvedAt: row.resolvedAt?.toISOString() ?? null,
+    model: row.classifier,
   }
 }
 
@@ -48,6 +50,7 @@ export function createMessagesRepo(db: Db) {
       id: string,
       result: ClassificationResult,
       sector: Sector,
+      classifier: string,
     ): Promise<MessageRow | undefined> {
       const [row] = await db
         .update(messages)
@@ -58,6 +61,7 @@ export function createMessagesRepo(db: Db) {
           confidenceScore: result.confidenceScore.toFixed(2),
           summary: result.summary,
           suggestedAction: result.suggestedAction,
+          classifier,
           status: 'COMPLETED',
           processedAt: new Date(),
         })
@@ -71,6 +75,21 @@ export function createMessagesRepo(db: Db) {
       return row
     },
 
+    /** Só a transição aberta → resolvida grava `resolved_at`; repetir não altera a data original. */
+    async resolve(id: string): Promise<MessageRow | undefined> {
+      const [row] = await db
+        .update(messages)
+        .set({ resolvedAt: sql`coalesce(${messages.resolvedAt}, now())` })
+        .where(eq(messages.id, id))
+        .returning()
+      return row
+    },
+
+    async reopen(id: string): Promise<MessageRow | undefined> {
+      const [row] = await db.update(messages).set({ resolvedAt: null }).where(eq(messages.id, id)).returning()
+      return row
+    },
+
     async metrics(): Promise<MetricsDto> {
       const [r] = await db
         .select({
@@ -80,14 +99,16 @@ export function createMessagesRepo(db: Db) {
           angry: sql<number>`count(*) filter (where ${messages.sentiment} = 'ANGRY')::int`,
           critical: sql<number>`count(*) filter (where ${messages.sentiment} = 'CRITICAL')::int`,
           completed: sql<number>`count(*) filter (where ${messages.status} = 'COMPLETED')::int`,
+          resolved: sql<number>`count(*) filter (where ${messages.resolvedAt} is not null)::int`,
           corrected: sql<number>`count(*) filter (where ${messages.status} = 'COMPLETED' and ${messages.correctedSector} is not null and ${messages.correctedSector} is distinct from ${messages.assignedSector})::int`,
         })
         .from(messages)
-      const m = r ?? { total: 0, calm: 0, neutral: 0, angry: 0, critical: 0, completed: 0, corrected: 0 }
+      const m = r ?? { total: 0, calm: 0, neutral: 0, angry: 0, critical: 0, completed: 0, resolved: 0, corrected: 0 }
       return {
         total: m.total,
         sentiments: { CALM: m.calm, NEUTRAL: m.neutral, ANGRY: m.angry, CRITICAL: m.critical },
         completed: m.completed,
+        resolved: m.resolved,
         corrected: m.corrected,
         accuracy: m.completed === 0 ? null : 1 - m.corrected / m.completed,
       }

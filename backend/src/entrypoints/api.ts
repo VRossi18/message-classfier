@@ -5,7 +5,7 @@ import { createRedisBus } from '../events/bus.js'
 import { createClassifyQueue } from '../queue/classify.queue.js'
 import { createMessagesRepo } from '../repo/messages.js'
 
-const config = loadConfig()
+const config = loadConfig(process.env, { requireLlm: false })
 const { db, sql } = createDb(config.DATABASE_URL)
 await runMigrations(db)
 

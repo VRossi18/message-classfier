@@ -22,6 +22,9 @@ export const MessageSchema = z.object({
   status: StatusSchema,
   createdAt: z.string(),
   processedAt: z.string().nullable(),
+  resolvedAt: z.string().nullable(),
+  /** Quem classificou (provedor:modelo). Opcional: respostas antigas não têm o campo. */
+  model: z.string().nullish(),
 })
 export type Message = z.infer<typeof MessageSchema>
 
@@ -36,6 +39,7 @@ export const MetricsSchema = z.object({
   sentiments: z.record(SentimentSchema, z.number()),
   corrected: z.number(),
   completed: z.number(),
+  resolved: z.number(),
   accuracy: z.number().nullable(), // 0..1, null enquanto não há concluídas
 })
 export type Metrics = z.infer<typeof MetricsSchema>

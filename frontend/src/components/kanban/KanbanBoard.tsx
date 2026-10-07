@@ -6,7 +6,15 @@ import { cn } from '@/lib/utils'
 import type { Message } from '@/lib/schemas'
 import { MessageCard } from './MessageCard'
 
-export function KanbanBoard({ messages, onOpen }: { messages: Message[]; onOpen: (id: string) => void }) {
+export function KanbanBoard({
+  messages,
+  onOpen,
+  onResolve,
+}: {
+  messages: Message[]
+  onOpen: (id: string) => void
+  onResolve?: (id: string) => void
+}) {
   // Mensagens ainda não classificadas ficam na coluna de entrada.
   const intake = messages.filter((m) => columnFor(m) === null)
   const boardRef = useRef<HTMLDivElement>(null)
@@ -21,7 +29,7 @@ export function KanbanBoard({ messages, onOpen }: { messages: Message[]; onOpen:
       <div ref={boardRef} className="flex gap-4 overflow-x-auto pb-4">
         <Column title="Em triagem" accent="bg-slate-400" count={intake.length}>
           {intake.map((m) => (
-            <MessageCard key={m.id} message={m} onOpen={onOpen} />
+            <MessageCard key={m.id} message={m} onOpen={onOpen} onResolve={onResolve} />
           ))}
         </Column>
         {COLUMNS.map((col) => {
@@ -29,7 +37,7 @@ export function KanbanBoard({ messages, onOpen }: { messages: Message[]; onOpen:
           return (
             <Column key={col.id} title={col.label} accent={col.accent} count={items.length}>
               {items.map((m) => (
-                <MessageCard key={m.id} message={m} onOpen={onOpen} />
+                <MessageCard key={m.id} message={m} onOpen={onOpen} onResolve={onResolve} />
               ))}
             </Column>
           )

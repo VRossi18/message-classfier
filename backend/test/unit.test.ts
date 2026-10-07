@@ -25,6 +25,8 @@ const row: MessageRow = {
   status: 'PENDING',
   createdAt: new Date('2026-01-01T10:00:00Z'),
   processedAt: null,
+  resolvedAt: null,
+  classifier: null,
 }
 
 const good: ClassificationResult = {
@@ -69,6 +71,12 @@ describe('FakeClassifier', () => {
     expect((await c.classify('Qual o prazo de envio do produto X?')).sector).toBe('STOCK')
     const angry = await c.classify('ISSO É UM ABSURDO!! Vou cancelar e procurar o Procon.')
     expect(angry.sentiment).toBe('CRITICAL')
+    // resumo: texto de até 140 chars fica inteiro; acima disso abrevia em fronteira de palavra
+    const meio = 'Preciso da segunda via do boleto, venceu ontem e não consegui pagar a tempo por causa do sistema.'
+    expect((await c.classify(meio)).summary).toBe(meio)
+    const longo = (await c.classify('palavra '.repeat(40))).summary
+    expect(longo.length).toBeLessThanOrEqual(140)
+    expect(longo.endsWith('palavra…')).toBe(true)
     // regressão: "cobram" (flexão de cobrar) deve cair em FINANCIAL
     expect((await c.classify('Já cobram errado todo mês')).sector).toBe('FINANCIAL')
   })
@@ -97,13 +105,13 @@ describe('OllamaClassifier', () => {
 describe('AnthropicClassifier', () => {
   it('lê a classificação do tool_use e força a ferramenta', async () => {
     const create = vi.fn().mockResolvedValue({ content: [{ type: 'tool_use', input: good }] })
-    const out = await new AnthropicClassifier('k', 'model', { messages: { create } } as never).classify('oi')
+    const out = await new AnthropicClassifier({ apiKey: 'k', model: 'model', timeoutMs: 1000, client: { messages: { create } } as never }).classify('oi')
     expect(out.summary).toBe(good.summary)
     expect(create.mock.calls[0]?.[0].tool_choice).toEqual({ type: 'tool', name: 'classify_message' })
   })
   it('rejeita resposta sem tool_use', async () => {
     const create = vi.fn().mockResolvedValue({ content: [{ type: 'text', text: 'oi' }] })
-    await expect(new AnthropicClassifier('k', 'model', { messages: { create } } as never).classify('oi')).rejects.toThrow()
+    await expect(new AnthropicClassifier({ apiKey: 'k', model: 'model', timeoutMs: 1000, client: { messages: { create } } as never }).classify('oi')).rejects.toThrow()
   })
 })
 
@@ -121,7 +129,7 @@ describe('processMessage', () => {
       subscribe: async () => () => {},
       close: async () => {},
     }
-    return { events, repo, deps: { repo, bus, classifier: { classify }, confidenceThreshold: 0.5 } }
+    return { events, repo, deps: { repo, bus, classifier: { name: 'test:model', classify }, confidenceThreshold: 0.5 } }
   }
 
   it('PROCESSING → COMPLETED publicando os dois eventos', async () => {
@@ -133,6 +141,7 @@ describe('processMessage', () => {
     const { deps, repo } = setup(async () => ({ ...good, confidenceScore: 0.2 }))
     await processMessage(deps, row.id)
     expect(vi.mocked(repo.applyClassification).mock.calls[0]?.[2]).toBe('HUMAN_REVIEW')
+    expect(vi.mocked(repo.applyClassification).mock.calls[0]?.[3]).toBe('test:model') // quem classificou é gravado
   })
   it('propaga erro da LLM para a fila tentar de novo', async () => {
     const { deps } = setup(async () => {

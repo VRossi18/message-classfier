@@ -23,7 +23,7 @@ export function createClassifyQueue(redisUrl: string): ClassifyQueue {
   const queue = new Queue<ClassifyJob>(CLASSIFY_QUEUE, { connection })
   const opts: JobsOptions = {
     attempts: CLASSIFY_ATTEMPTS,
-    backoff: { type: 'exponential', delay: 2000 },
+    backoff: { type: 'exponential', delay: 5000 },
     removeOnComplete: 1000,
     removeOnFail: 1000,
   }

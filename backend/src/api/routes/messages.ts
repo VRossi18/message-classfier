@@ -33,5 +33,31 @@ export const messagesRoutes: FastifyPluginAsyncZod<ServerDeps> = async (app, { r
     },
   )
 
+  // Resolver e reabrir são idempotentes: repetir devolve o estado atual sem novo evento.
+  app.post('/api/messages/:id/resolve', { schema: { params: IdParams } }, async (req, reply) => {
+    const current = await repo.getById(req.params.id)
+    if (!current) return reply.code(404).send({ error: 'Mensagem não encontrada' })
+    if (current.status !== 'COMPLETED') {
+      return reply.code(409).send({ error: 'Só mensagens já classificadas podem ser resolvidas' })
+    }
+    if (current.resolvedAt) return toDto(current)
+    const row = await repo.resolve(current.id)
+    if (!row) return reply.code(404).send({ error: 'Mensagem não encontrada' })
+    const dto = toDto(row)
+    await bus.publish({ type: 'message.updated', message: dto })
+    return dto
+  })
+
+  app.post('/api/messages/:id/reopen', { schema: { params: IdParams } }, async (req, reply) => {
+    const current = await repo.getById(req.params.id)
+    if (!current) return reply.code(404).send({ error: 'Mensagem não encontrada' })
+    if (!current.resolvedAt) return toDto(current)
+    const row = await repo.reopen(current.id)
+    if (!row) return reply.code(404).send({ error: 'Mensagem não encontrada' })
+    const dto = toDto(row)
+    await bus.publish({ type: 'message.updated', message: dto })
+    return dto
+  })
+
   app.get('/api/metrics', async () => repo.metrics())
 }
